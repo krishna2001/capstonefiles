@@ -1,0 +1,171 @@
+
+# load necessary libraries
+library(tm)
+library(knitr)
+library(R.utils)
+library(RWeka)
+library(ggplot2)
+library(SnowballC)
+library(wordcloud)
+library(tau)
+
+
+#Next, we will load the data and read in the necessary files.
+
+#load files
+
+if (!file.exists("final/en_US/en_US.blogs.txt")) {
+ download.file("https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip", destfile="Coursera-SwiftKey.zip", method="curl")
+unzip("Coursera-SwiftKey.zip", exdir="final/en_US")
+}
+
+blogs <- readLines("final/en_US/en_US.blogs.txt")
+save(blogs, file = "blogs.RData")
+news <- readLines("final/en_US/en_US.news.txt")
+save(news, file = "news.RData")
+twitter <- readLines("final/en_US/en_US.twitter.txt")
+save(twitter, file = "twitter.RData")
+
+
+#We notice the files are quite large.  We will create smaller random samples of the files, so that we may examine them more closely using the TM package.
+
+
+sampleblogs <- sample(blogs, length(blogs)*0.05, replace = TRUE)
+save(sampleblogs, file = "sampleblogs.RData")
+samplenews <- sample(news, length(news)*0.05, replace = TRUE)
+save(samplenews, file = "samplenews.RData")
+sampletwitter <- sample(twitter, length(twitter)*0.05, replace = TRUE)
+save(sampletwitter, file = "sampletwitter.RData")
+
+
+#We will now remove any non A-Z characters, and then place these smaller sample files in a corpus, so that we can work with it using the TM package.
+
+filelist <- c(sampleblogs,samplenews,sampletwitter)
+filelist <- gsub("[^A-Za-z ]","",filelist)
+samplecorpus <- Corpus(VectorSource(list(filelist)))
+save(samplecorpus, file = "samplecorpus.RData")
+
+#Next, we use the functions of the TM package to clean our corpus, removing unneeded items that will clutter our analysis.
+
+ 
+cleancorp <- tm_map(samplecorpus, removeNumbers)
+cleancorp <- tm_map(cleancorp, removePunctuation)
+cleancorp <- tm_map(cleancorp, tolower)
+cleancorp <- tm_map(cleancorp, removeWords, stopwords("english"))
+cleancorp <- tm_map(cleancorp, stripWhitespace)
+FCCbadwords<-c("fuck", "shit", "piss", "cunt", "cocksucker", "motherfucker", "tits")
+cleancorp <- tm_map(cleancorp, removeWords, FCCbadwords)
+cleancorp <- tm_map(cleancorp, PlainTextDocument)
+save(cleancorp, file = "cleancorp.RData")
+
+dataframe<-data.frame(text=unlist(sapply(cleancorp, `[`, "content")), stringsAsFactors=F)
+dataframe[1,]
+
+#We will need to generate our n-grams, a Term Document Matrix of our Corpus, and then manipulate it in order to examine word frequencies within the corpus.
+
+unigrams <- textcnt(as.character(cleancorp), n = 1, method = "string")
+bigrams <- textcnt(as.character(cleancorp), n = 2, method = "string")
+trigrams <- textcnt(as.character(cleancorp), n = 3, method = "string")
+save(trigrams, file = "trigrams.RData")
+
+bigrams <- bigrams[order(bigrams, decreasing = TRUE)]
+
+bigdf<-data.frame(bigram=names(bigrams),freq=textcnt(bigrams))
+
+
+unigrams<-Corpus(VectorSource(unigrams))
+save(unigrams, file = "unigrams.RData")
+bigrams1<-Corpus(VectorSource(bigrams))
+save(bigrams1, file = "bigrams1.RData")
+trigrams<-Corpus(VectorSource(trigrams))
+save(trigrams, file = "trigrams.RData")
+
+
+#create Document Term Matrices for our n-grams
+unigrams.dtm<-DocumentTermMatrix(unigrams)
+save(unigrams.dtm, file = "unigrams.dtm.RData")
+bigrams.dtm<-DocumentTermMatrix(bigrams)
+save(bigrams.dtm, file = "bigrams.dtm.RData")
+trigrams.dtm<-DocumentTermMatrix(trigrams)
+save(trigrams.dtm, file = "trigrams.dtm.RData")
+
+
+
+#function to convert N-Gram DTM's to data frames
+FreqGramCreator <- function(dtm) {
+  dtm.2<-as.matrix(dtm)
+  freq <- sort(colSums(dtm.2, na.rm=TRUE), decreasing=TRUE)
+  phrase <- names(freq)
+  gramdataframe(phrase=phrase, freq=freq)
+}
+
+#Convert N-Grams to data frames
+unigrams.df<-FreqGramCreator(unigrams.dtm)
+save(unigrams.df, file = "unigrams.df.RData")
+bigrams.df<-FreqGramCreator(bigrams.dtm)
+save(bigrams.df, file = "bigrams.df.RData")
+trigrams.df<-FreqGramCreator(trigrams.dtm)
+save(trigrams.df, file = "trigrams.df.RData")
+
+bigram.2.1 <- sapply(strsplit(names(bigrams.df), ' '), function(a) a[1])
+bigram.2.2 <- sapply(strsplit(names(bigrams.df), ' '), function(a) a[2])
+trigram.3.1 <- sapply(strsplit(names(trigrams.df), ' '), function(a) a[1])
+trigram.3.2 <- sapply(strsplit(names(trigrams.df), ' '), function(a) a[2])
+trigram.3.3 <- sapply(strsplit(names(trigrams.df), ' '), function(a) a[3])
+quadgram.4.1 <- sapply(strsplit(quadnames, ' '), function(a) a[1])
+quadgram.4.2 <- sapply(strsplit(quadnames, ' '), function(a) a[2])
+quadgram.4.3 <- sapply(strsplit(quadnames, ' '), function(a) a[3])
+quadgram.4.4 <- sapply(strsplit(quadnames, ' '), function(a) a[4])  
+
+fullgramDF<-merge(quads, unibitriDF, by=c("FirstWord","SecondWord", "ThirdWord"))
+
+Next, we will graph which words appear most frequently in the corpus.  This shows the 20 words that occur most fequently in the corpus, those having frequency greater than 5000.
+
+```{r graph words, echo=TRUE}
+wf=data.frame(term=names(freq),freq=freq)
+p <- ggplot(subset(wf, freq>5000), aes(term, freq))    
+p <- p + geom_bar(stat="identity")   
+p <- p + theme(axis.text.x=element_text(angle=45, hjust=1))  
+p <- p + ggtitle("Most Frequently Occurring Words in Corpus")
+p
+```
+
+
+**2- and 3-Gram Analysis**
+
+First, we generate a database of bigrams and trigrams using the Weka package, and then graph the most frequent.
+
+
+```{r ngrams, echo=TRUE}
+bigrams <- textcnt(as.character(cleancorp), n = 2, method = "string")
+bigrams <- bigrams[order(bigrams, decreasing = TRUE)]
+top20bigrams<-bigrams[1:20]
+bg=data.frame(bigram=names(top20bigrams),freq=top20bigrams)
+q <- ggplot(subset(bg), aes(bigram, freq))    
+q <- q + geom_bar(stat="identity")   
+q <- q + theme(axis.text.x=element_text(angle=45, hjust=1))   
+q <- q + ggtitle("Most Frequently Occurring Bigrams in Corpus")
+q
+
+
+trigrams <- textcnt(as.character(cleancorp), n = 3, method = "string")
+trigrams <- trigrams[order(trigrams, decreasing = TRUE)]
+top20trigrams<-trigrams[1:20]
+tg=data.frame(trigram=names(top20trigrams),freq=top20trigrams)
+r <- ggplot(subset(tg), aes(trigram, freq))    
+r <- r + geom_bar(stat="identity")   
+r <- r + theme(axis.text.x=element_text(angle=45, hjust=1))  
+r <- r + ggtitle("Most Frequently Occurring Trigrams in Corpus")
+r
+```
+
+
+
+**Plans for Shiny App Going Forward**
+
+We will see to predict the next words of a phrase based on the frequency of n-gram tokens in the data corpus, and the associations between words.
+
+We will use Shiny to allow users to input their text and return to them our predicted next word based on our prediction algorithm.
+
+
+
